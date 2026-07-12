@@ -1,0 +1,100 @@
+#!/opt/venv/bin/python
+"""Patch the served desktop web client so the USER-facing view behaves the way we want.
+
+This is ONLY the human's browser view — Shimpz drives X directly via XTEST/xdotool/shimpz-input,
+unaffected by any of this. Two independent, idempotent, defensive patches (each skips cleanly if
+the base client changed):
+
+1) KasmVNC client  (/usr/share/kasmvnc/www/index.html — loaded inside kclient's iframe)
+   - CSS: hide the left control bar (#noVNC_control_bar_anchor) → user sees ONLY the screen.
+   - JS: seed client-setting DEFAULTS in localStorage BEFORE the app reads them —
+     view_only=true (watch-only by default; Shimpz's own XTEST input is unaffected) + clipboard on.
+
+2) kclient wrapper (/kclient/public/index.html — the page actually served at :3000 / the public URL)
+   The wrapper embeds KasmVNC in an <iframe> with a HARDCODED query string, so `?view_only=…` on the
+   OUTER url never reached the VNC client (the reported bug). We inject a tiny script that FORWARDS the
+   outer `view_only` into the iframe's own src, where KasmVNC's ui.js honours it via getConfigVar. The
+   iframe keeps its original src (so the desktop still loads if the script is ever blocked); we only
+   rewrite+reload it when the param is actually present (an explicit take-control/watch switch):
+       …/?view_only=false → take control (interactive)
+       …/?view_only=true  → watch-only   (also the default, from patch 1's seed)
+"""
+
+import os
+import re
+from pathlib import Path
+
+# ── patch 1: the KasmVNC client (view-only default + hidden bar + clipboard) ────────────────────────
+PAGE = os.environ.get("SHIMPZ_KASM_INDEX", "/usr/share/kasmvnc/www/index.html")
+ANCHOR = "<link href=dist/style.bundle.css rel=stylesheet>"
+START, END = "<!--shimpz-patch-start-->", "<!--shimpz-patch-end-->"
+INJECT = (
+    START + "<style>#noVNC_control_bar_anchor{display:none!important}</style>"
+    '<script>try{var d={view_only:"true",clipboard_up:"true",clipboard_down:"true",'
+    'clipboard_seamless:"true",translate_shortcuts:"true"};'
+    "for(var k in d){if(localStorage.getItem(k)===null)localStorage.setItem(k,d[k]);}}"
+    "catch(e){}</script>" + END
+)
+
+# ── patch 2: the kclient wrapper (forward ?view_only from the outer url into the vnc iframe) ─────────
+KCLIENT = os.environ.get("SHIMPZ_KCLIENT_INDEX", "/kclient/public/index.html")
+VO_START, VO_END = "<!--shimpz-vo-start-->", "<!--shimpz-vo-end-->"
+# Runs after the iframe. If the outer url carries ?view_only, rewrite the iframe src to match and reload
+# it once; with NO param we return immediately, leaving the original hardcoded src (and its load) alone.
+VO_SCRIPT = (
+    VO_START + "<script>(function(){try{"
+    "var v=new URLSearchParams(location.search).get('view_only');if(v===null)return;"
+    "var f=document.querySelector('iframe.vnc');if(!f)return;"
+    "var want=/^\\s*(0|no|off|false)\\s*$/i.test(v)?'false':'true';"
+    "var s=f.getAttribute('src');"
+    "s=/[?&]view_only=/.test(s)?s.replace(/([?&]view_only=)[^&]*/,'$1'+want):s+'&view_only='+want;"
+    "if(s!==f.getAttribute('src'))f.src=s;"
+    "}catch(e){}})();</script>" + VO_END
+)
+# Match the whole <iframe class="vnc" …></iframe>. Can't use [^>]* across the tag: the src holds EJS
+# tags (…<% if(path){ %>…) whose `%>` contains a '>'. So anchor on class="vnc" then .*?</iframe> (dotall).
+_IFRAME_RE = re.compile(r'<iframe[^>]*class="vnc".*?</iframe>', re.DOTALL)
+
+
+def _patch_kasm():
+    if not Path(PAGE).is_file():
+        print(f"shimpz-kasm-patch: {PAGE} not found — skipping")
+        return
+    s = Path(PAGE).read_text(encoding="utf-8", errors="ignore")
+    # strip current (comment-wrapped) and legacy (id-based) injections so re-runs update cleanly
+    s = re.sub(re.escape(START) + ".*?" + re.escape(END), "", s, flags=re.DOTALL)
+    s = re.sub(
+        r"<style id=shimpz-kasm-css>.*?id=shimpz-kasm-js[^>]*>.*?</script>",
+        "",
+        s,
+        flags=re.DOTALL,
+    )
+    if ANCHOR not in s:
+        print("shimpz-kasm-patch: anchor not found — KasmVNC client changed, skipping")
+        return
+    s = s.replace(ANCHOR, ANCHOR + INJECT, 1)
+    Path(PAGE).write_text(s, encoding="utf-8")
+    print(f"shimpz-kasm-patch: patched {PAGE} (view-only default + hidden bar + clipboard)")
+
+
+def _patch_kclient():
+    if not Path(KCLIENT).is_file():
+        print(f"shimpz-kasm-patch: {KCLIENT} not found — skipping kclient view_only forward")
+        return
+    s = Path(KCLIENT).read_text(encoding="utf-8", errors="ignore")
+    s = re.sub(re.escape(VO_START) + ".*?" + re.escape(VO_END), "", s, flags=re.DOTALL)  # idempotent
+    if not _IFRAME_RE.search(s):
+        print("shimpz-kasm-patch: kclient vnc iframe not found — kclient changed, skipping")
+        return
+    s = _IFRAME_RE.sub(lambda m: m.group(0) + VO_SCRIPT, s, count=1)  # func repl → no backslash/`$1` mangling
+    Path(KCLIENT).write_text(s, encoding="utf-8")
+    print(f"shimpz-kasm-patch: patched {KCLIENT} (view_only URL forward)")
+
+
+def main():
+    _patch_kasm()
+    _patch_kclient()
+
+
+if __name__ == "__main__":
+    main()

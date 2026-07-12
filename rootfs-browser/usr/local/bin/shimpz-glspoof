@@ -1,0 +1,62 @@
+#!/opt/venv/bin/python
+"""shimpz-glspoof — injects the WebGL renderer spoof into EVERY page Chrome opens, via CDP.
+
+The `--load-extension` MAIN-world content-script path is unreliable headless, so instead we attach
+at the BROWSER level, auto-attach to every target (flatten), and register the spoof with
+Page.addScriptToEvaluateOnNewDocument (runs before any page script, in the main world) + evaluate it
+on the current document. Holds ONE persistent connection and exits when it drops (or Chrome is down) —
+the autostart supervisor loop (`while true; do shimpz-glspoof; sleep 3; done`) respawns it. Spoof source
+lives at /etc/shimpz/chrome-ext/spoof.js.
+"""
+
+import asyncio
+import json
+import os
+import sys
+from pathlib import Path
+
+import websockets
+
+sys.path.insert(0, os.environ.get("SHIMPZ_LIB", "/opt/shimpz-lib"))
+import shimpzcdp  # shared CDP plumbing (see /opt/shimpz-lib/shimpzcdp.py)
+
+SPOOF = Path(os.environ.get("SHIMPZ_SPOOF_JS", "/etc/shimpz/chrome-ext/spoof.js")).read_text()
+
+
+async def run_once():
+    _id = 0
+
+    def nid():
+        nonlocal _id
+        _id += 1
+        return _id
+
+    async with websockets.connect(shimpzcdp.browser_ws(), max_size=None, ping_interval=20) as ws:
+
+        async def send(method, params=None, session_id=None):
+            m = {"id": nid(), "method": method, "params": params or {}}
+            if session_id:
+                m["sessionId"] = session_id
+            await ws.send(json.dumps(m))
+
+        # Auto-attach to all current + future targets, flattened onto this one connection.
+        await send(
+            "Target.setAutoAttach",
+            {"autoAttach": True, "waitForDebuggerOnStart": False, "flatten": True},
+        )
+        async for raw in ws:
+            msg = json.loads(raw)
+            if msg.get("method") == "Target.attachedToTarget":
+                p = msg["params"]
+                sid = p["sessionId"]
+                if p["targetInfo"].get("type") == "page":
+                    await send("Page.enable", {}, sid)
+                    await send("Page.addScriptToEvaluateOnNewDocument", {"source": SPOOF}, sid)
+                    await send("Runtime.evaluate", {"expression": SPOOF}, sid)  # current doc too
+
+
+if __name__ == "__main__":
+    # ONE run per process — the autostart supervisor loop respawns us 3s after any exit, so a
+    # dropped connection / Chrome-down error just propagates (loud in the log) instead of being
+    # retried by a second, redundant loop in here.
+    asyncio.run(run_once())

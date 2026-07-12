@@ -1,0 +1,51 @@
+#!/usr/bin/with-contenv bash
+# OVERRIDE of the LSIO base svc-kasmvnc run. Two changes vs upstream:
+#  1) pass `-drinode` ONLY when the DRI node actually exists (black-screenshot fix, below).
+#  2) LOCK the desktop to a FIXED resolution (SHIMPZ_SCREEN, default 1280x800) and refuse
+#     client resize (`-AcceptSetDesktopSize=0`). KasmVNC otherwise resizes the X screen to
+#     whatever browser viewport connects (was 1024x768 → 1728x997), so a screenshot Shimpz took
+#     and the coordinates xdotool/shimpz-input click on belonged to DIFFERENT coordinate spaces
+#     → clicks/typing landed in the wrong place. A fixed res = screenshot px == click px,
+#     independent of who (phone/desktop) is viewing. Clients just see it scaled to fit.
+#     WHY 1280x800 (not 1080p/1440x900): the vision pipeline downscales screenshots above
+#     ~1 MP, so the model estimates click coords in a SHRUNK space and they land ~3-4% short
+#     (PROVEN: at 1440x900 Shimpz missed by 3.7%/scale; at 1280x800=1.02MP X-error was 0, pixel-
+#     perfect). Keep SHIMPZ_SCREEN at/under ~1 MP so Shimpz's clicks stay accurate. Bigger view is
+#     possible at 1440x900 ONLY if shimpz-shot overlays a labelled coord grid (model reads labels).
+#
+# Why: on this GPU-less host /dev/dri/renderD128 does NOT exist, but the stock script
+# passed `-drinode /dev/dri/renderD128` unconditionally. That makes Xvnc set up a
+# GBM/DRI framebuffer whose pixels XGetImage CANNOT read → every server-side screenshot
+# (import / ffmpeg x11grab / cua-driver) comes out BLACK. Omitting -drinode gives a
+# plain software shadow framebuffer in RAM that is readable. Verified: a test Xvnc
+# without -drinode captured real content (brightness 19320) vs 0 (black) with it.
+# When a real GPU + /dev/dri is added later, -drinode (and -hw3d) come back automatically.
+
+# Pass gpu flags if mounted
+if ls /dev/dri/renderD* 1> /dev/null 2>&1 && [ -z ${DISABLE_DRI+x} ] && ! which nvidia-smi; then
+  HW3D="-hw3d"
+fi
+if [ -z ${DRINODE+x} ]; then
+  DRINODE="/dev/dri/renderD128"
+fi
+# Only add -drinode when the node really exists (mirrors the -hw3d guard above).
+DRI_ARG=""
+[ -e "${DRINODE}" ] && DRI_ARG="-drinode ${DRINODE}"
+
+exec s6-setuidgid abc \
+  /usr/local/bin/Xvnc $DISPLAY \
+    ${HW3D} \
+    -PublicIP 127.0.0.1 \
+    ${DRI_ARG} \
+    -disableBasicAuth \
+    -SecurityTypes None \
+    -AlwaysShared \
+    -http-header Cross-Origin-Embedder-Policy=require-corp \
+    -http-header Cross-Origin-Opener-Policy=same-origin \
+    -geometry ${SHIMPZ_SCREEN:-1280x800} \
+    -AcceptSetDesktopSize=0 \
+    -sslOnly 0 \
+    -RectThreads 0 \
+    -websocketPort 6901 \
+    -interface 0.0.0.0 \
+    -Log *:stdout:10

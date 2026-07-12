@@ -1,0 +1,26 @@
+{
+  "DefaultPopupsSetting": 1,
+  "DefaultNotificationsSetting": 2,
+  "DefaultGeolocationSetting": 2,
+
+  "BlockThirdPartyCookies": false,
+  "PromptForDownloadLocation": false,
+  "DownloadDirectory": "/config/downloads",
+  "DownloadRestrictions": 0,
+  "AbusiveExperienceInterventionEnforce": false,
+  "SafeBrowsingProtectionLevel": 0,
+  "SafeBrowsingExtendedReportingEnabled": false,
+  "PasswordLeakDetectionEnabled": false,
+  "DefaultBrowserSettingEnabled": false,
+  "DefaultJavaScriptSetting": 1,
+  "BrowserSignin": 0,
+  "SyncDisabled": true,
+  "MetricsReportingEnabled": false,
+
+  "TranslateEnabled": false,
+  "PasswordManagerEnabled": false,
+  "AutofillAddressEnabled": false,
+  "AutofillCreditCardEnabled": false,
+  "PaymentMethodQueryEnabled": false,
+  "PromotionalTabsEnabled": false
+}
