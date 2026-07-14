@@ -38,6 +38,7 @@ ARG PYTHON_VERSION=3.14.6
 ARG UV_VERSION=0.11.25
 ARG GOST_VERSION=2.12.0
 ARG GOOGLE_CHROME_VERSION=150.0.7871.114-1
+ARG GOOGLE_CHROME_SHA256=0f19e68dca574849632e25229f15853d2beac33fa06498feed43f34628bc2d53
 ARG UV_INSTALL_SHA256=ca2de1bca2913ba30ce88658b6d90a663c627ecac378803aa58084a9adb35a46
 ARG GOST_SHA256=1b6d47e6b850479b23fda484b3a8193c7bc0d5dc38fa5a02b4b4c57a77534d92
 
@@ -69,7 +70,7 @@ RUN gpasswd -d abc sudo 2>/dev/null || true; \
 # ruff, node, project scaffolding, etc).
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        curl ca-certificates gnupg \
+        curl ca-certificates \
         xterm fonts-noto fonts-noto-color-emoji fonts-liberation fonts-noto-cjk \
         # a11y runtime + REAL input. xdotool injects REAL XTEST events that GTK/Qt
         # native dialogs honor (synthetic XSendEvent is silently ignored).
@@ -84,14 +85,15 @@ RUN apt-get update && \
     curl -4 -fsSL "https://github.com/ginuerzh/gost/releases/download/v${GOST_VERSION}/gost_${GOST_VERSION}_linux_amd64.tar.gz" -o /tmp/gost.tar.gz && \
     echo "${GOST_SHA256}  /tmp/gost.tar.gz" | sha256sum -c - && \
     tar -xzf /tmp/gost.tar.gz -C /tmp gost && install -m 0755 /tmp/gost /usr/local/bin/gost && rm -f /tmp/gost /tmp/gost.tar.gz && \
-    # --- Google Chrome Stable (official repo) ---
-    install -d -m 0755 /etc/apt/keyrings && \
-    curl -fsSL https://dl.google.com/linux/linux_signing_key.pub \
-        | gpg --dearmor -o /etc/apt/keyrings/google-chrome.gpg && \
-    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main" \
-        > /etc/apt/sources.list.d/google-chrome.list && \
-    apt-get update && apt-get install -y --no-install-recommends \
-        "google-chrome-stable=${GOOGLE_CHROME_VERSION}" && \
+    # The signed APT index retains only the current stable version. Fetch the immutable versioned
+    # pool object instead, bind its exact bytes, and verify the embedded package version before install.
+    curl --proto '=https' --tlsv1.2 -fsSL \
+        "https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_${GOOGLE_CHROME_VERSION}_amd64.deb" \
+        -o /tmp/google-chrome-stable.deb && \
+    echo "${GOOGLE_CHROME_SHA256}  /tmp/google-chrome-stable.deb" | sha256sum -c - && \
+    test "$(dpkg-deb --field /tmp/google-chrome-stable.deb Version)" = "${GOOGLE_CHROME_VERSION}" && \
+    apt-get install -y --no-install-recommends /tmp/google-chrome-stable.deb && \
+    rm -f /tmp/google-chrome-stable.deb && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /var/lib/apt/periodic/* /var/cache/apt/* /var/cache/fontconfig/* \
         /var/cache/ldconfig/aux-cache /var/cache/man/* /var/log/apt/* \
