@@ -18,6 +18,8 @@ import os
 import subprocess
 import time
 
+import native_process
+
 os.environ.setdefault("DISPLAY", ":1")
 
 DEFAULT_DIALOG_RE = "Open File|Save File|Save As|Open Files|Select|Abrir|Salvar|Selecionar arquivo"
@@ -28,7 +30,7 @@ class UploadError(Exception):
 
 
 def _run(*a: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["xdotool", *a], capture_output=True, text=True, check=False)  # noqa: S603, S607
+    return native_process.run_xdotool(*a)
 
 
 def _find_dialog(title_regex: str) -> str | None:

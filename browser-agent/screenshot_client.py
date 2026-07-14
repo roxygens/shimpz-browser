@@ -10,9 +10,10 @@ container. Depends on svc-kasmvnc/run's `-drinode`-omission fix to avoid a black
 from __future__ import annotations
 
 import os
-import subprocess
 import tempfile
 from pathlib import Path
+
+import native_process
 
 os.environ.setdefault("DISPLAY", ":1")
 
@@ -26,8 +27,7 @@ def capture() -> bytes:
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
         out_path = Path(tmp.name)
     try:
-        cmd = ["import", "-window", "root", str(out_path)]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False)  # noqa: S603 — fixed ImageMagick binary, args are a validated temp path
+        result = native_process.capture_root_window(str(out_path))
         if result.returncode != 0 or not out_path.exists() or out_path.stat().st_size == 0:
             raise ScreenshotError(
                 f"could not capture the screen (DISPLAY={os.environ.get('DISPLAY')}): {(result.stderr or '').strip()}"
@@ -38,7 +38,7 @@ def capture() -> bytes:
 
 
 def geometry() -> tuple[int, int] | None:
-    result = subprocess.run(["xdotool", "getdisplaygeometry"], capture_output=True, text=True, check=False)  # noqa: S607
+    result = native_process.run_xdotool("getdisplaygeometry")
     if result.returncode != 0 or not result.stdout.strip():
         return None
     parts = result.stdout.split()

@@ -12,8 +12,9 @@ from __future__ import annotations
 import math
 import os
 import random
-import subprocess
 import time
+
+import native_process
 
 os.environ.setdefault("DISPLAY", ":1")
 
@@ -25,13 +26,13 @@ class XTestError(Exception):
 def _xdo(*a: str) -> None:
     # FAIL-FAST: a non-zero xdotool exit previously meant "reported success but did nothing" — the
     # exact failure mode this real-input tool exists to eliminate. Surface xdotool's own stderr.
-    result = subprocess.run(["xdotool", *a], capture_output=True, text=True, check=False)  # noqa: S603, S607 — fixed binary, args are validated coords/keysyms, never a shell string
+    result = native_process.run_xdotool(*a)
     if result.returncode != 0:
         raise XTestError(f"xdotool {' '.join(a)} failed (rc={result.returncode}): {(result.stderr or '').strip()}")
 
 
 def pos() -> tuple[int, int]:
-    result = subprocess.run(["xdotool", "getmouselocation", "--shell"], capture_output=True, text=True, check=False)  # noqa: S607
+    result = native_process.run_xdotool("getmouselocation", "--shell")
     if result.returncode != 0:
         raise XTestError(f"xdotool getmouselocation failed (rc={result.returncode}): {(result.stderr or '').strip()}")
     parsed = {}

@@ -93,7 +93,8 @@ RUN curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" -o /tmp/uv-instal
 WORKDIR /opt/browser-agent
 COPY browser-agent/app.py browser-agent/validate.py browser-agent/audit.py browser-agent/token_store.py \
      browser-agent/xtest_client.py browser-agent/cdp_client.py browser-agent/screenshot_client.py \
-     browser-agent/upload_client.py browser-agent/downloads_client.py browser-agent/healthcheck.py ./
+     browser-agent/upload_client.py browser-agent/downloads_client.py browser-agent/healthcheck.py \
+     browser-agent/native_process.py ./
 
 # --- Overlay browser-only s6 services, autostart, and Chrome policy/spoof assets ---
 COPY rootfs-browser/ /
