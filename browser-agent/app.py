@@ -234,9 +234,12 @@ class Handler(BaseHTTPRequestHandler):
             return {}
         raw = self.rfile.read(length)
         try:
-            return json.loads(raw)
+            payload = json.loads(raw)
         except json.JSONDecodeError as exc:
             raise ApiError(HTTPStatus.BAD_REQUEST, f"invalid JSON body: {exc}") from exc
+        if not isinstance(payload, dict):
+            raise ApiError(HTTPStatus.BAD_REQUEST, "JSON body must be an object")
+        return payload
 
     def _dispatch(self, method: str) -> None:
         if not self._authed():
@@ -254,111 +257,129 @@ class Handler(BaseHTTPRequestHandler):
         except (xtest_client.XTestError, cdp_client.CDPError, screenshot_client.ScreenshotError) as exc:
             audit.log(method.lower(), self.path, result="error", reason=str(exc))
             self._send_json(HTTPStatus.BAD_GATEWAY, {"error": str(exc)})
-        except Exception as exc:  # noqa: BLE001 — top-level HTTP handler: log + surface, never crash the server, NEVER treat as success
+        except (
+            OSError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+            LookupError,
+            cdp_client.websockets.WebSocketException,
+        ) as exc:
             audit.log(method.lower(), self.path, result="error", reason=str(exc))
             self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)})
 
-    def _route(self, method: str) -> None:  # noqa: C901 — a flat endpoint dispatch table, not real complexity
+    def _route(self, method: str) -> None:
         split = urlsplit(self.path)
-        path, query = split.path, parse_qs(split.query)
+        path = split.path
+        if method == "POST":
+            self._route_post(path)
+            return
+        if method == "GET":
+            self._route_get(path, parse_qs(split.query))
+            return
+        raise ApiError(HTTPStatus.NOT_FOUND, f"no route for {method} {path}")
 
-        if method == "POST" and path == "/v1/browser/move":
+    def _route_post(self, path: str) -> None:
+        if path == "/v1/browser/move":
             body = self._body()
             result = _move(body)
             trace = audit.log("move", f"{body.get('x')},{body.get('y')}", result="ok")
             self._send_json(HTTPStatus.OK, {**result, "trace_id": trace})
             return
-        if method == "POST" and path == "/v1/browser/click":
+        if path == "/v1/browser/click":
             body = self._body()
             result = _click(body)
             trace = audit.log("click", f"{body.get('x')},{body.get('y')}", result="ok")
             self._send_json(HTTPStatus.OK, {**result, "trace_id": trace})
             return
-        if method == "POST" and path == "/v1/browser/dclick":
+        if path == "/v1/browser/dclick":
             body = self._body()
             result = _dclick(body)
             trace = audit.log("dclick", f"{body.get('x')},{body.get('y')}", result="ok")
             self._send_json(HTTPStatus.OK, {**result, "trace_id": trace})
             return
-        if method == "POST" and path == "/v1/browser/key":
+        if path == "/v1/browser/key":
             body = self._body()
             result = _key(body)
             trace = audit.log("key", body.get("combo", "?"), result="ok")
             self._send_json(HTTPStatus.OK, {**result, "trace_id": trace})
             return
-        if method == "POST" and path == "/v1/browser/type":
+        if path == "/v1/browser/type":
             body = self._body()
             result = _type(body)
             trace = audit.log("type", "?", result="ok", typed_len=result["typed_len"])
             self._send_json(HTTPStatus.OK, {**result, "trace_id": trace})
             return
-        if method == "POST" and path == "/v1/browser/scroll":
+        if path == "/v1/browser/scroll":
             body = self._body()
             result = _scroll(body)
             trace = audit.log("scroll", body.get("direction", "?"), result="ok")
             self._send_json(HTTPStatus.OK, {**result, "trace_id": trace})
             return
-        if method == "GET" and path == "/v1/browser/pos":
+        if path == "/v1/browser/navigate":
+            body = self._body()
+            result = _navigate(body)
+            trace = audit.log("navigate", body.get("url", "?"), result="ok")
+            self._send_json(HTTPStatus.OK, {**result, "trace_id": trace})
+            return
+        if path == "/v1/browser/render":
+            body = self._body()
+            result = _render(body)
+            trace = audit.log("render", body.get("url", "?"), result="ok", html_len=len(result["html"]))
+            self._send_json(HTTPStatus.OK, {**result, "trace_id": trace})
+            return
+        if path == "/v1/browser/cdp/eval":
+            body = self._body()
+            result = _cdp_eval(body)
+            trace = audit.log("cdp.eval", "?", result="ok")
+            self._send_json(HTTPStatus.OK, {**result, "trace_id": trace})
+            return
+        if path == "/v1/browser/upload":
+            body = self._body()
+            result = _upload(body)
+            trace = audit.log("upload", body.get("filename", "?"), result="ok", mode=result["mode"])
+            self._send_json(HTTPStatus.OK, {**result, "trace_id": trace})
+            return
+        raise ApiError(HTTPStatus.NOT_FOUND, f"no route for POST {path}")
+
+    def _route_get(self, path: str, query: dict[str, list[str]]) -> None:
+        if path == "/v1/browser/pos":
             result = _pos()
             self._send_json(HTTPStatus.OK, result)
             return
-        if method == "GET" and path == "/v1/browser/screenshot":
+        if path == "/v1/browser/screenshot":
             png = screenshot_client.capture()
             geo = screenshot_client.geometry()
             headers = {"X-Screen-Geometry": f"{geo[0]}x{geo[1]}"} if geo else {}
             audit.log("screenshot", "root", result="ok", byte_count=len(png))
             self._send_bytes(HTTPStatus.OK, "image/png", png, headers)
             return
-        if method == "POST" and path == "/v1/browser/navigate":
-            body = self._body()
-            result = _navigate(body)
-            trace = audit.log("navigate", body.get("url", "?"), result="ok")
-            self._send_json(HTTPStatus.OK, {**result, "trace_id": trace})
-            return
-        if method == "POST" and path == "/v1/browser/render":
-            body = self._body()
-            result = _render(body)
-            trace = audit.log("render", body.get("url", "?"), result="ok", html_len=len(result["html"]))
-            self._send_json(HTTPStatus.OK, {**result, "trace_id": trace})
-            return
-        if method == "POST" and path == "/v1/browser/cdp/eval":
-            body = self._body()
-            result = _cdp_eval(body)
-            trace = audit.log("cdp.eval", "?", result="ok")
-            self._send_json(HTTPStatus.OK, {**result, "trace_id": trace})
-            return
-        if method == "GET" and path == "/v1/browser/cdp/rect":
+        if path == "/v1/browser/cdp/rect":
             selector = validate.validate_selector(query.get("selector", [""])[0])
             url_hint = validate.validate_url_hint((query.get("url_hint") or [None])[0])
             result = _cdp_rect(selector, url_hint)
             trace = audit.log("cdp.rect", selector, result="ok")
             self._send_json(HTTPStatus.OK, {**result, "trace_id": trace})
             return
-        if method == "GET" and path == "/v1/browser/cdp/text":
+        if path == "/v1/browser/cdp/text":
             selector = validate.validate_selector(query.get("selector", [""])[0])
             url_hint = validate.validate_url_hint((query.get("url_hint") or [None])[0])
             result = _cdp_text(selector, url_hint)
             trace = audit.log("cdp.text", selector, result="ok", text_len=len(result["text"]))
             self._send_json(HTTPStatus.OK, {**result, "trace_id": trace})
             return
-        if method == "POST" and path == "/v1/browser/upload":
-            body = self._body()
-            result = _upload(body)
-            trace = audit.log("upload", body.get("filename", "?"), result="ok", mode=result["mode"])
-            self._send_json(HTTPStatus.OK, {**result, "trace_id": trace})
-            return
-        if method == "GET" and path == "/v1/browser/downloads/list":
+        if path == "/v1/browser/downloads/list":
             result = _downloads_list()
             audit.log("downloads.list", "?", result="ok", count=len(result["downloads"]))
             self._send_json(HTTPStatus.OK, result)
             return
-        if method == "GET" and path == "/v1/browser/downloads/fetch":
+        if path == "/v1/browser/downloads/fetch":
             name = query.get("name", [""])[0]
             data = _downloads_fetch(name)
             audit.log("downloads.fetch", name, result="ok", byte_count=len(data))
             self._send_bytes(HTTPStatus.OK, "application/octet-stream", data)
             return
-        raise ApiError(HTTPStatus.NOT_FOUND, f"no route for {method} {path}")
+        raise ApiError(HTTPStatus.NOT_FOUND, f"no route for GET {path}")
 
     def do_GET(self) -> None:
         self._dispatch("GET")
@@ -373,7 +394,9 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
-    server = ThreadingHTTPServer(("0.0.0.0", LISTEN_PORT), Handler)  # noqa: S104 — reachable only from the shimpz-brain<->shimpz-browser internal network, by design
+    # An empty host is the HTTPServer spelling for IPv4 INADDR_ANY. The service must be reachable
+    # from shimpz-brain on their private container network, rather than only inside this container.
+    server = ThreadingHTTPServer(("", LISTEN_PORT), Handler)
     print(f"browser-agent listening on :{LISTEN_PORT}", file=sys.stderr)
     server.serve_forever()
 
