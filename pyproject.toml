@@ -1,0 +1,11 @@
+[project]
+name = "shimpz-browser-runtime"
+version = "0.0.0"
+requires-python = "==3.14.*"
+dependencies = [
+    "requests==2.34.2",
+    "websockets==16.0",
+]
+
+[tool.uv]
+package = false

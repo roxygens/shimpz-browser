@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1@sha256:87999aa3d42bdc6bea60565083ee17e86d1f3339802f543c0d03998580f9cb89
 # check=skip=SecretsUsedInArgOrEnv ; false positive: the *_TOKEN_GID/*_TOKEN_* ARGs here hold numeric group IDs and file paths, never secret values
 #
 # shimpz-browser — the ONLY container that runs Chrome, the desktop, XTEST, and CDP.
@@ -13,7 +13,21 @@
 # MUST keep CAP_SYS_ADMIN + unconfined seccomp/apparmor at the compose level — Chrome's OWN
 # sandbox needs them; dropping forces --no-sandbox, a regression for a browser that exists to
 # visit untrusted sites. `shimpz-brain` (the brain) is the one that loses those caps, not this container.
-FROM lscr.io/linuxserver/baseimage-kasmvnc:ubuntunoble
+FROM lscr.io/linuxserver/baseimage-kasmvnc:ubuntunoble@sha256:c6d902c207d6e4a66ca41ce36dda549cd58a5bc8d353468b24b0cf780eb528c8
+ARG SOURCE_DATE_EPOCH=0
+
+ARG UBUNTU_SNAPSHOT=20260623T000000Z
+RUN set -eux; \
+    find /etc/apt/sources.list.d -maxdepth 1 -type f \( -name '*.list' -o -name '*.sources' \) -delete; \
+    printf '%s\n' \
+        "deb https://snapshot.ubuntu.com/ubuntu/${UBUNTU_SNAPSHOT} noble main restricted universe multiverse" \
+        "deb https://snapshot.ubuntu.com/ubuntu/${UBUNTU_SNAPSHOT} noble-updates main restricted universe multiverse" \
+        "deb https://snapshot.ubuntu.com/ubuntu/${UBUNTU_SNAPSHOT} noble-security main restricted universe multiverse" \
+        > /etc/apt/sources.list; \
+    printf 'Acquire::Check-Valid-Until "false";\n' > /etc/apt/apt.conf.d/99shimpz-snapshot; \
+    test "$(grep -Fc "https://snapshot.ubuntu.com/ubuntu/${UBUNTU_SNAPSHOT}" /etc/apt/sources.list)" -eq 3; \
+    ! grep -RqsE 'https?://(archive|security)\.ubuntu\.com|https?://download\.docker\.com' \
+        /etc/apt/sources.list /etc/apt/sources.list.d
 
 LABEL org.opencontainers.image.title="shimpz-browser" \
       org.opencontainers.image.description="Chrome + KasmVNC desktop + browser-agent (SECURITY_ENGINEERING_PLAN.md item 0)"
@@ -23,6 +37,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 ARG PYTHON_VERSION=3.14.6
 ARG UV_VERSION=0.11.25
 ARG GOST_VERSION=2.12.0
+ARG GOOGLE_CHROME_VERSION=150.0.7871.114-1
 ARG UV_INSTALL_SHA256=ca2de1bca2913ba30ce88658b6d90a663c627ecac378803aa58084a9adb35a46
 ARG GOST_SHA256=1b6d47e6b850479b23fda484b3a8193c7bc0d5dc38fa5a02b4b4c57a77534d92
 
@@ -51,7 +66,7 @@ RUN gpasswd -d abc sudo 2>/dev/null || true; \
 # --- System deps: Chrome, desktop terminal, real-input stack, screenshot toolbelt ---
 # Everything here is Chrome/desktop/automation-specific — NONE of the document-toolbelt/dev-tooling
 # packages the brain needs (those moved to shimpz-brain/Dockerfile; this container never runs Claude Code,
-# shimpz-db, ruff, node, etc).
+# ruff, node, project scaffolding, etc).
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         curl ca-certificates gnupg \
@@ -73,22 +88,29 @@ RUN apt-get update && \
     install -d -m 0755 /etc/apt/keyrings && \
     curl -fsSL https://dl.google.com/linux/linux_signing_key.pub \
         | gpg --dearmor -o /etc/apt/keyrings/google-chrome.gpg && \
-    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" \
+    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main" \
         > /etc/apt/sources.list.d/google-chrome.list && \
-    apt-get update && apt-get install -y --no-install-recommends google-chrome-stable && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+    apt-get update && apt-get install -y --no-install-recommends \
+        "google-chrome-stable=${GOOGLE_CHROME_VERSION}" && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /var/lib/apt/periodic/* /var/cache/apt/* /var/cache/fontconfig/* \
+        /var/cache/ldconfig/aux-cache /var/cache/man/* /var/log/apt/* \
+        /var/log/alternatives.log /var/log/dpkg.log
 
 # --- uv + a minimal Python venv for browser-agent (websockets/requests — the SAME pins the main
-# image uses, so there's only ever one version of each to track across the whole stack). ---
+# image uses, so there's only ever one version of each to track across the whole stack). uv.lock
+# binds the transitive graph and artifact hashes; --frozen refuses manifest/lock drift. ---
+COPY pyproject.toml uv.lock /opt/shimpz-browser-runtime/
 RUN curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" -o /tmp/uv-install.sh && \
     echo "${UV_INSTALL_SHA256}  /tmp/uv-install.sh" | sha256sum -c - && \
     env UV_INSTALL_DIR=/usr/local/bin INSTALLER_NO_MODIFY_PATH=1 sh /tmp/uv-install.sh && \
     rm -f /tmp/uv-install.sh && \
     UV_PYTHON_INSTALL_DIR=/opt/uv-python uv python install "${PYTHON_VERSION}" && \
     UV_PYTHON_INSTALL_DIR=/opt/uv-python uv venv --python "${PYTHON_VERSION}" /opt/venv && \
-    uv pip install --python /opt/venv/bin/python --no-cache-dir \
-        websockets==16.0 requests==2.34.2 && \
-    /opt/venv/bin/python -c 'import websockets, requests'
+    UV_PROJECT_ENVIRONMENT=/opt/venv uv sync --project /opt/shimpz-browser-runtime \
+        --frozen --no-dev --no-install-project --python /opt/venv/bin/python && \
+    /opt/venv/bin/python -c 'import websockets, requests' && \
+    rm -rf /root/.cache/uv
 
 WORKDIR /opt/browser-agent
 COPY browser-agent/app.py browser-agent/validate.py browser-agent/audit.py browser-agent/token_store.py \
