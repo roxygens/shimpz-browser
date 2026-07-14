@@ -107,12 +107,15 @@ RUN curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" -o /tmp/uv-instal
     echo "${UV_INSTALL_SHA256}  /tmp/uv-install.sh" | sha256sum -c - && \
     env UV_INSTALL_DIR=/usr/local/bin INSTALLER_NO_MODIFY_PATH=1 sh /tmp/uv-install.sh && \
     rm -f /tmp/uv-install.sh && \
+    export UV_CACHE_DIR=/tmp/shimpz-uv-cache UV_LINK_MODE=copy && \
     UV_PYTHON_INSTALL_DIR=/opt/uv-python uv python install "${PYTHON_VERSION}" && \
     UV_PYTHON_INSTALL_DIR=/opt/uv-python uv venv --python "${PYTHON_VERSION}" /opt/venv && \
     UV_PROJECT_ENVIRONMENT=/opt/venv uv sync --project /opt/shimpz-browser-runtime \
         --frozen --no-dev --no-install-project --python /opt/venv/bin/python && \
     /opt/venv/bin/python -c 'import websockets, requests' && \
-    rm -rf /root/.cache/uv
+    find /opt/uv-python /opt/venv -type f -name '*.pyc' -delete && \
+    /opt/venv/bin/python -m compileall -q -f --invalidation-mode checked-hash /opt/uv-python /opt/venv && \
+    rm -rf "${UV_CACHE_DIR}" /config/.cache/uv
 
 WORKDIR /opt/browser-agent
 COPY browser-agent/app.py browser-agent/validate.py browser-agent/audit.py browser-agent/token_store.py \
