@@ -1,4 +1,5 @@
 #!/usr/bin/with-contenv bash
+# shellcheck shell=bash  # s6-overlay's `with-contenv` wrapper is not a shell ShellCheck recognizes.
 # OVERRIDE of the LSIO base svc-kasmvnc run. Two changes vs upstream:
 #  1) pass `-drinode` ONLY when the DRI node actually exists (black-screenshot fix, below).
 #  2) LOCK the desktop to a FIXED resolution (SHIMPZ_SCREEN, default 1280x800) and refuse

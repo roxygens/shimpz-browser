@@ -1,4 +1,5 @@
 #!/usr/bin/with-contenv bash
+# shellcheck shell=sh  # openbox invokes this file through `sh`; keep the body POSIX-safe.
 # NOTE: openbox launches this via `sh <file>`, so the shebang is ignored and the
 # body must be POSIX-sh safe (no `set -o pipefail`, no bashisms). Container env
 # (IPROYAL_*, SHIMPZ_SCREEN, …) is inherited from the KasmVNC service.

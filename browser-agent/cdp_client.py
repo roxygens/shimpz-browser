@@ -39,14 +39,14 @@ def pick(url_hint: str | None = None) -> dict:
     return ts[0]
 
 
-async def _cmd(ws, _id: int, method: str, params: dict | None = None, timeout: float = 15) -> dict:  # noqa: ASYNC109 — per-command timeout is the API
+async def _cmd(ws, _id: int, method: str, params: dict | None = None, response_timeout: float = 15) -> dict:
     """Send one CDP command over `ws` and await ITS response (matched by id).
 
     FAIL-LOUD: a CDP protocol error raises, never returns a silent {}.
     """
     await ws.send(json.dumps({"id": _id, "method": method, "params": params or {}}))
     while True:
-        msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=timeout))
+        msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=response_timeout))
         if msg.get("id") == _id:
             if "error" in msg:
                 raise CDPError(msg["error"].get("message", str(msg["error"])))

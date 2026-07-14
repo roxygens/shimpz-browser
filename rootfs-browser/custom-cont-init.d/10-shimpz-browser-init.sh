@@ -1,4 +1,5 @@
 #!/usr/bin/with-contenv bash
+# shellcheck shell=bash
 # Runs as ROOT during LSIO's init stage — BEFORE openbox/autostart (which runs unprivileged as
 # `abc`, already remapped to PUID/PGID by that point). `/config` is the fresh `shimpz-browser-config`
 # volume: Docker populated it from the image's `/config` tree on first mount, which carries the

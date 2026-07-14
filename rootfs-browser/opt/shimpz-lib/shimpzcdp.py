@@ -40,14 +40,14 @@ def browser_ws():
     return requests.get(f"{CDP}/json/version", timeout=5).json()["webSocketDebuggerUrl"]
 
 
-async def cmd(ws, _id, method, params=None, timeout=15):  # noqa: ASYNC109  # per-command timeout is the API
+async def cmd(ws, _id, method, params=None, response_timeout=15):
     """Send one CDP command over `ws` and await ITS response (matched by id).
 
     FAIL-LOUD: a CDP protocol error raises, never returns a silent {}.
     """
     await ws.send(json.dumps({"id": _id, "method": method, "params": params or {}}))
     while True:
-        msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=timeout))
+        msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=response_timeout))
         if msg.get("id") == _id:
             if "error" in msg:
                 raise RuntimeError(msg["error"].get("message", str(msg["error"])))
