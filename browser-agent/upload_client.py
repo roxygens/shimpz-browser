@@ -33,17 +33,25 @@ def _run(*a: str) -> subprocess.CompletedProcess:
     return native_process.run_xdotool(*a)
 
 
+def _title_identifies_application(title: str, window_class: str) -> bool:
+    compact_title = "".join(char for char in title.casefold() if char.isalnum())
+    compact_class = "".join(char for char in window_class.casefold() if char.isalnum())
+    return bool(compact_title and compact_class and (compact_class in compact_title or compact_title in compact_class))
+
+
 def _find_dialog(title_regex: str) -> str | None:
     search = _run("search", "--name", title_regex)
     if search.returncode != 0 or not search.stdout.strip():
         return None
     candidates = []
-    for wid in search.stdout.split():
-        name = _run("getwindowname", wid)
-        title = name.stdout.strip() if name.returncode == 0 else ""
-        if "Chrome" in title or "Telegram" in title:
+    for window_id in search.stdout.split():
+        name = _run("getwindowname", window_id)
+        window_class = _run("getwindowclassname", window_id)
+        if name.returncode != 0 or window_class.returncode != 0:
             continue
-        candidates.append(wid)
+        if _title_identifies_application(name.stdout.strip(), window_class.stdout.strip()):
+            continue
+        candidates.append(window_id)
     return candidates[-1] if candidates else None
 
 
