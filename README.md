@@ -1,7 +1,7 @@
 # shimpz-browser
 
 An optional, isolated Browser Service for the
-**[Shimpz](https://github.com/roxygens/shimpz)** ecosystem. It keeps a headful
+**[Shimpz](https://github.com/TheShimpz/shimpz)** ecosystem. It keeps a headful
 `google-chrome-stable` instance, CDP, XTEST, downloads, and its profile inside one
 container. The only control surface is browser-agent's narrow, bearer-token-gated,
 audited HTTP API.
