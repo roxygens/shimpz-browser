@@ -9,7 +9,7 @@ HTTP surface (see test-shimpz-cdp.py for THAT thin-client side). No live Chrome 
 `websockets` are stubbed in sys.modules BEFORE import (same pattern the old test-shimpz-cdp.py used for
 shimpzcdp.py), then the REAL _cmd()/_evaluate()/rect()/text()/navigate()/render() run over a
 protocol-speaking fake websocket — nothing stubbed above the wire, so the error/fail-fast branches
-actually execute. Run: python3 tests/test-browser-agent-cdp.py
+actually execute through the Browser repository's unittest discovery.
 """
 
 import json
