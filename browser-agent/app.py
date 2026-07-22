@@ -7,7 +7,7 @@ runtime can mediate declared Browser capabilities through this restricted, audit
 shimpz-glspoof remains an autonomous background process inside `shimpz-browser`, so it is not part
 of this API.
 
-Mandatory controls (SECURITY_ENGINEERING_PLAN.md item 0 — the split is not safe without these):
+Mandatory controls for the isolated browser boundary:
   - Auth fail-closed on EVERY endpoint: `Authorization: Bearer <token>` required; no token via
     query string; no anonymous "just health" endpoint that would itself prove a capability; an
     internal error NEVER becomes an implicit allow (see `_dispatch`'s exception handling below —

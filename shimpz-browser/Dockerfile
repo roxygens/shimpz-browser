@@ -78,7 +78,7 @@ ARG SOURCE_DATE_EPOCH=0
 ARG NODE_VERSION
 
 LABEL org.opencontainers.image.title="shimpz-browser" \
-      org.opencontainers.image.description="Chrome + KasmVNC desktop + browser-agent (SECURITY_ENGINEERING_PLAN.md item 0)"
+      org.opencontainers.image.description="Chrome + KasmVNC desktop + isolated browser-agent"
 
 ENV DEBIAN_FRONTEND=noninteractive
 

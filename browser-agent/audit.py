@@ -1,7 +1,7 @@
 """Structured, REDACTED audit log for every browser-agent operation.
 
 Matches the repo-wide structlog JSON schema `logq` expects (ts/level/service/trace_id/msg/…extra).
-Mandatory redaction (SECURITY_ENGINEERING_PLAN.md item 0): NEVER log typed text, key combos beyond
+Mandatory redaction: NEVER log typed text, key combos beyond
 the combo name itself, upload/download file bytes, bearer tokens, cookies, or a raw `cdp/eval` JS
 payload — only endpoint, status, sizes/counts, and a summarized error. `log()` has no way to accept
 a "text"/"js"/"bytes" field, so a call site cannot regress this by accident.
