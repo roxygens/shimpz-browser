@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -22,7 +24,12 @@ def _node_command() -> list[str]:
         version = subprocess.run([node, "--version"], capture_output=True, text=True, timeout=10, check=False)
         if version.returncode == 0 and version.stdout.startswith("v24."):
             return [node]
-    return ["docker", "run", "--rm", "--interactive", "--network", "none", "--read-only", NODE_IMAGE, "node"]
+    docker = ["docker", "run", "--rm", "--interactive", "--network", "none", "--read-only", NODE_IMAGE, "node"]
+    socket = Path("/var/run/docker.sock")
+    sg = shutil.which("sg")
+    if socket.exists() and not os.access(socket, os.R_OK | os.W_OK) and sg is not None:
+        return [sg, "docker", "-c", shlex.join(docker)]
+    return docker
 
 
 class KasmViewOnlyJavascriptTest(unittest.TestCase):
