@@ -48,16 +48,13 @@ def _windmouse(
     sy: float,
     dx: float,
     dy: float,
-    gravity: float = 9.0,
-    wind_mag: float = 3.0,
-    max_step: float = 12.0,
-    damp_dist: float = 12.0,
 ) -> list[tuple[int, int]]:
     """Yield (x,y) points from (sx,sy) to (dx,dy) — Ben Land's WindMouse.
 
     Parameter names map to the paper's G_0/W_0/M_0/D_0: gravitational pull toward the target, wind
     force magnitude, max step size, and the distance where wind damps out.
     """
+    gravity, wind_mag, max_step, damp_dist = 9.0, 3.0, 12.0, 12.0
     cx, cy = float(sx), float(sy)
     vx = vy = wx = wy = 0.0
     s3, s5 = math.sqrt(3), math.sqrt(5)
