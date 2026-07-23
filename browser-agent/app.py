@@ -278,42 +278,40 @@ class Handler(BaseHTTPRequestHandler):
             return
         raise ApiError(HTTPStatus.NOT_FOUND, f"no route for {method} {path}")
 
-    def _route_post(self, path: str) -> None:
+    def _route_input_post(self, path: str) -> bool:
+        if path not in {
+            "/v1/browser/move",
+            "/v1/browser/click",
+            "/v1/browser/dclick",
+            "/v1/browser/key",
+            "/v1/browser/type",
+            "/v1/browser/scroll",
+        }:
+            return False
+        body = self._body()
         if path == "/v1/browser/move":
-            body = self._body()
             result = _move(body)
             trace = audit.log("move", f"{body.get('x')},{body.get('y')}", result="ok")
-            self._send_json(HTTPStatus.OK, {**result, "trace_id": trace})
-            return
-        if path == "/v1/browser/click":
-            body = self._body()
+        elif path == "/v1/browser/click":
             result = _click(body)
             trace = audit.log("click", f"{body.get('x')},{body.get('y')}", result="ok")
-            self._send_json(HTTPStatus.OK, {**result, "trace_id": trace})
-            return
-        if path == "/v1/browser/dclick":
-            body = self._body()
+        elif path == "/v1/browser/dclick":
             result = _dclick(body)
             trace = audit.log("dclick", f"{body.get('x')},{body.get('y')}", result="ok")
-            self._send_json(HTTPStatus.OK, {**result, "trace_id": trace})
-            return
-        if path == "/v1/browser/key":
-            body = self._body()
+        elif path == "/v1/browser/key":
             result = _key(body)
             trace = audit.log("key", body.get("combo", "?"), result="ok")
-            self._send_json(HTTPStatus.OK, {**result, "trace_id": trace})
-            return
-        if path == "/v1/browser/type":
-            body = self._body()
+        elif path == "/v1/browser/type":
             result = _type(body)
             trace = audit.log("type", "?", result="ok", typed_len=result["typed_len"])
-            self._send_json(HTTPStatus.OK, {**result, "trace_id": trace})
-            return
-        if path == "/v1/browser/scroll":
-            body = self._body()
+        else:
             result = _scroll(body)
             trace = audit.log("scroll", body.get("direction", "?"), result="ok")
-            self._send_json(HTTPStatus.OK, {**result, "trace_id": trace})
+        self._send_json(HTTPStatus.OK, {**result, "trace_id": trace})
+        return True
+
+    def _route_post(self, path: str) -> None:
+        if self._route_input_post(path):
             return
         if path == "/v1/browser/navigate":
             body = self._body()
