@@ -35,24 +35,34 @@ class XTestClientTests(unittest.TestCase):
             "0.02",
         )
 
-    def test_type_text_sends_one_sequence_with_per_character_pauses(self) -> None:
+    def test_type_text_sends_each_chunk_in_argv_safe_invocations(self) -> None:
         with (
-            mock.patch.object(xtest_client.random, "uniform", side_effect=[0.1, 0.2, 0.3]),
-            mock.patch.object(xtest_client.random, "random", side_effect=[0.01, 0.5]),
+            mock.patch.object(xtest_client, "_TYPE_CHUNK_SIZE", 2),
+            mock.patch.object(xtest_client.random, "uniform", side_effect=[0.1, 0.2, 0.3, 0.4]),
+            mock.patch.object(xtest_client.random, "random", return_value=0.5),
             mock.patch.object(xtest_client, "_xdo") as run,
+            mock.patch.object(xtest_client.time, "sleep") as sleep,
         ):
-            xtest_client.type_text("a-")
+            xtest_client.type_text("ab-c")
 
-        run.assert_called_once_with(
-            "type",
-            "--clearmodifiers",
-            "--delay",
-            "100",
-            "--",
-            "a-",
-            "sleep",
-            "0.5",
+        self.assertEqual(
+            run.call_args_list,
+            [
+                mock.call("type", "--clearmodifiers", "--delay", "100", "--", "ab"),
+                mock.call("type", "--clearmodifiers", "--delay", "300", "--", "-c"),
+            ],
         )
+        sleep.assert_called_once_with(0.2)
+
+    def test_type_text_empty_text_is_a_no_op(self) -> None:
+        with (
+            mock.patch.object(xtest_client, "_xdo") as run,
+            mock.patch.object(xtest_client.time, "sleep") as sleep,
+        ):
+            xtest_client.type_text("")
+
+        run.assert_not_called()
+        sleep.assert_not_called()
 
 
 if __name__ == "__main__":

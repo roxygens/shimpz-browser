@@ -115,25 +115,21 @@ def dclick(dx: int, dy: int) -> None:
 
 
 def type_text(text: str) -> None:
-    commands = []
-    for offset in range(0, len(text), _TYPE_CHUNK_SIZE):
-        chunk = text[offset : offset + _TYPE_CHUNK_SIZE]
+    chunks = tuple(text[offset : offset + _TYPE_CHUNK_SIZE] for offset in range(0, len(text), _TYPE_CHUNK_SIZE))
+    for index, chunk in enumerate(chunks):
         delays = [random.uniform(0.045, 0.16) for _ in chunk]
         pause = sum(random.uniform(0.25, 0.6) for _ in chunk if random.random() < 0.04)
         key_delay_ms = round(1000 * sum(delays[:-1]) / max(1, len(delays) - 1))
-        commands.extend(
-            (
-                "type",
-                "--clearmodifiers",
-                "--delay",
-                str(key_delay_ms),
-                "--",
-                chunk,
-                "sleep",
-                str(delays[-1] + pause),
-            )
+        _xdo(
+            "type",
+            "--clearmodifiers",
+            "--delay",
+            str(key_delay_ms),
+            "--",
+            chunk,
         )
-    _xdo(*commands)
+        if index < len(chunks) - 1:
+            time.sleep(delays[-1] + pause)
 
 
 def key(combo: str) -> None:
