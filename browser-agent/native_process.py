@@ -7,9 +7,7 @@ operation arguments remain ordinary argv elements (never a shell command).
 
 from __future__ import annotations
 
-import os
 import subprocess
-import tempfile
 
 _XDOTOOL = "/usr/bin/xdotool"
 _IMAGEMAGICK_IMPORT = "/usr/bin/import"
@@ -20,30 +18,12 @@ def _run(executable: str, arguments: tuple[str, ...]) -> subprocess.CompletedPro
     if executable not in _EXECUTABLES:
         raise ValueError(f"unsupported browser-agent executable: {executable!r}")
 
-    argv = (executable, *arguments)
-    with (
-        tempfile.TemporaryFile(mode="w+", encoding="utf-8") as stdout,
-        tempfile.TemporaryFile(mode="w+", encoding="utf-8") as stderr,
-    ):
-        file_actions = (
-            (os.POSIX_SPAWN_DUP2, stdout.fileno(), 1),
-            (os.POSIX_SPAWN_DUP2, stderr.fileno(), 2),
-        )
-        pid = os.posix_spawn(executable, argv, os.environ, file_actions=file_actions)
-        while True:
-            try:
-                _pid, wait_status = os.waitpid(pid, 0)
-                break
-            except InterruptedError:
-                continue
-        stdout.seek(0)
-        stderr.seek(0)
-        return subprocess.CompletedProcess(
-            args=list(argv),
-            returncode=os.waitstatus_to_exitcode(wait_status),
-            stdout=stdout.read(),
-            stderr=stderr.read(),
-        )
+    return subprocess.run(
+        [executable, *arguments],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
 
 
 def run_xdotool(*arguments: str) -> subprocess.CompletedProcess[str]:
